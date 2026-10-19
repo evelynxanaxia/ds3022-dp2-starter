@@ -40,27 +40,69 @@ def populate_queue() -> str:
     """POST to the scatter API and return your queue URL."""
     logger = get_run_logger()
     # TODO (Checkpoint A)
-    raise NotImplementedError
+    logger = get_run_logger()
 
+    uva_id = os.getenv("UVA_ID")
+    port = os.getenv("SCATTER_PORT", "8000")
+    endpoint = f"http://127.0.0.1:{port}/api/scatter/{uva_id}"
+
+    response = requests.post(endpoint)
+    response.raise_for_status()
+
+    data = response.json()
+    queue_url = data["sqs_url"]
+
+    logger.info(f"Queue URL: {queue_url}")
+    return queue_url
 
 def get_counts(queue_url: str) -> dict:
     """Plain helper (not a task): return the three ApproximateNumberOf... counters as integers."""
     # TODO (Checkpoint A)
-    raise NotImplementedError
-
+    sqs = boto3.client("sqs")
+    response = sqs.get_queue_attributes(
+        QueueUrl=queue_url,
+        AttributeNames=[
+            "ApproximateNumberOfMessages",
+            "ApproximateNumberOfMessagesNotVisible",
+            "ApproximateNumberOfMessagesDelayed",
+        ],
+    )
+    attrs = response.get("Attributes", {})
+    return {
+        "visible": int(attrs.get("ApproximateNumberOfMessages", 0)),
+        "not_visible": int(attrs.get("ApproximateNumberOfMessagesNotVisible", 0)),
+        "delayed": int(attrs.get("ApproximateNumberOfMessagesDelayed", 0)),
+    }
 
 @task
 def monitor_queue(queue_url: str, poll_s: int = 5, timeout_s: int = 1200) -> dict:
     """Log the three counters every poll_s seconds until nothing is delayed; raise after timeout_s."""
     # TODO (Checkpoint A)
-    raise NotImplementedError
+    logger = get_run_logger()
+    start_time = time.time()
 
+    while True:
+        if time.time() - start_time > timeout_s:
+            raise TimeoutError(
+                f"Queue monitoring exceeded timeout limit of {timeout_s} seconds."
+            )
+
+        counts = get_counts(queue_url)
+        logger.info(
+            f"Queue Counts -> Visible: {counts['visible']}, Not Visible:"
+            f" {counts['not_visible']}, Delayed: {counts['delayed']}"
+        )
+
+        if counts["delayed"] == 0:
+            logger.info("All delayed messages have arrived (Delayed: 0).")
+            return counts
+        time.sleep(poll_s)
 
 @task
 def collect_messages(queue_url: str, expected: int = 21) -> int:
     """Receive, land in DuckDB, then delete. Return how many fragments are stored."""
     # TODO (Checkpoint B): MessageAttributeNames=["All"] and resp.get("Messages", [])
-    raise NotImplementedError
+    
 
 
 @task
